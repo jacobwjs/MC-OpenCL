@@ -26,21 +26,24 @@
 
 
 #define DATA_SIZE (101)
-#define MAX_THREADS (16)
-#define NUM_EVENTS (1)		// Number of times the kernel is executed.
+#define MAX_THREADS (4)
+#define LOCAL_SIZE (1)			// The local size of a work group.
+#define NUM_EVENTS (1)			// Number of times the kernel is executed.
+#define PHOTONS_PER_ITEM (1)	// Number of photons to simulate per-work-item.
 
 double radial_size = 3.0;
 int NR = 100;
 
 char * load_program_source(const char *filename);
 void printFluence(float *results, const int numPhotons);
+void printAllResults(float *results);
 
 
 int main(int argc, char** argv)
 {
 	cl_int err;                         // error code returned from api calls
 
-	float results[DATA_SIZE];           // results returned from device
+	float results[DATA_SIZE * MAX_THREADS];           // results returned from device
 
 	size_t global;                      // global domain size for our calculation
 	size_t local;                       // local domain size for our calculation
@@ -114,7 +117,7 @@ int main(int argc, char** argv)
 
 	// Create the compute program from the source buffer
 	//
-	const char *filename = "testing-kernel.opencl";
+	const char *filename = "launchPhotons.opencl";
 	char *program_source = load_program_source(filename);
 	program = clCreateProgramWithSource(context, 1, (const char **)&program_source, NULL, &err);
 	if (!program)
@@ -149,7 +152,7 @@ int main(int argc, char** argv)
 	// Create the input and output arrays in device memory for our calculation
 	//
 	input  = clCreateBuffer(context,  CL_MEM_READ_ONLY,  sizeof(unsigned int) * (MAX_THREADS*4), NULL, NULL);
-	output = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float) * DATA_SIZE, NULL, NULL);
+	output = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float) * DATA_SIZE * MAX_THREADS, NULL, NULL);
 	if (!input || !output)
 	{
 		printf("Error: Failed to allocate device memory!\n");
@@ -168,13 +171,15 @@ int main(int argc, char** argv)
 	// Set the arguments to our compute kernel
 	//
 	err = 0;
-	int num_photons_per_work_item = 2000; ///MAX_THREADS;
+	const int num_photons_per_work_item = PHOTONS_PER_ITEM; ///MAX_THREADS;
+	const int detector_size = DATA_SIZE;
 	//err  = clSetKernelArg(kernel, 0, sizeof(cl_mem), &input);
 	//err |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &output);
 	//err |= clSetKernelArg(kernel, 2, sizeof(unsigned int), &count);
 	err  = clSetKernelArg(kernel, 0, sizeof(cl_mem), &input);
 	err |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &output);
-	err |= clSetKernelArg(kernel, 2, sizeof(int), &num_photons_per_work_item);
+	err |= clSetKernelArg(kernel, 2, sizeof(const int), &num_photons_per_work_item);
+	err |= clSetKernelArg(kernel, 3, sizeof(const int), &detector_size);
 	if (err != CL_SUCCESS)
 	{
 		printf("Error: Failed to set kernel arguments! %d\n", err);
@@ -196,7 +201,7 @@ int main(int argc, char** argv)
 	// using the maximum number of work group items for this device
 	//
 	global = MAX_THREADS;
-	local = 16;
+	local = LOCAL_SIZE;
 
 	for (i = 0; i < NUM_EVENTS; i++) {
 		err  = clEnqueueNDRangeKernel(commands, kernel, 1, NULL, &global, &local, 0, NULL, &event[i]);
@@ -215,7 +220,7 @@ int main(int argc, char** argv)
 
 	// Read back the results from the device to verify the output
 	//
-	err = clEnqueueReadBuffer( commands, output, CL_TRUE, 0, sizeof(float) * DATA_SIZE, results, 0, NULL, NULL );
+	err = clEnqueueReadBuffer( commands, output, CL_TRUE, 0, sizeof(float) * DATA_SIZE * MAX_THREADS, results, 0, NULL, NULL );
 	if (err != CL_SUCCESS)
 	{
 		printf("Error: Failed to read output array! %d\n", err);
@@ -232,8 +237,23 @@ int main(int argc, char** argv)
 	printf("Time for event (ms): %10.5f  \n", (end-start)/1000000.0);
 
 
+	// Display the total calculations made on the GPU.
+	printAllResults(results);
+
+	// Sum up all values.
+	float vals = 0.0f;
+	float summed_results[DATA_SIZE];
+	int j;
+	for (i = 0; i < DATA_SIZE; i++) {
+		for (j = 0; j < MAX_THREADS; j++) {
+			vals += results[(j*DATA_SIZE) + i];
+		}
+		summed_results[i] = vals;
+		vals = 0.0f;
+	}
+
 	// Print out the calculated fluences to disk.
-	printFluence((float *)results, (MAX_THREADS/local)*num_photons_per_work_item);
+	printFluence((float *)summed_results, (MAX_THREADS)*num_photons_per_work_item);
 
 
 	// Shutdown and cleanup
@@ -272,6 +292,17 @@ char * load_program_source(const char *filename)
 	//printf("kernel = %s", source);
 
 	return source;
+}
+
+void printAllResults(float *results)
+{
+	int i, j;
+	for (i = 0; i < DATA_SIZE/2; i++) {
+		for (j = 0; j < MAX_THREADS; j++) {
+			printf("[%d, %d] = %5.3f \t ", j, i, results[(j*DATA_SIZE) + i]);
+		}
+		printf("\n");
+	}
 }
 
 

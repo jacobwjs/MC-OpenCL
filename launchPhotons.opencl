@@ -131,184 +131,6 @@ void InitTissue(Tissue *t)
 }
 
 
-//
-//
-//
-////==============================================================
-//// Move the photon one step length through the medium.
-////----------------------------------------------------
-//void Hop(Photon *p, Tissue *t, random_state *rand_state)
-//{
-//    
-//    
-//    // Step size to take.
-//    p->step_size = (-1) * log(random_01(rand_state))/(t->mu_a + t->mu_s);    
-//    
-//    // Update position of photon.
-//    p->x += p->step_size * p->ux;
-//    p->y += p->step_size * p->uy;
-//    p->z += p->step_size * p->uz;
-//    
-//    
-//}
-//
-//
-//
-////==============================================================
-//// Move the photon one step through the medium.
-////---------------------------------------------                            
-//float Drop(Photon *p, Tissue *t)
-//{
-//    float absorb = p->weight * (1 - t->albedo);
-//    p->weight -= absorb;
-//    return absorb;
-//}
-
-
-
-////==============================================================
-//// Calculate the new trajectory of the photon (Spin).
-////----------------------------------------------------
-//void Spin(Photon *p, random_state *rand_state)
-//{
-//    float cost, sint;	// cosine and sine of the polar deflection angle theta. 
-//	float cosp, sinp;	// cosine and sine of the azimuthal angle psi. 
-//	float psi;
-//    
-//    float temp;
-//    
-//    // Self explanatory.
-//    float PI = 3.14159265;
-//    
-//	float tempdir = p->ux;
-//    
-//    // FIXME: Should not be hard coded value here.
-//    //--------------------------------------------
-//    float g = 0.9;
-//    
-//    
-//    if(g==0.0f) {
-//		cost = 2.0f*random_01(rand_state) -1.0f;//Should be close close??!!!!!
-//    }
-//    else {
-//        temp = (1.0f - g*g) / (1.0f - g + 2*g*random_01(rand_state));
-//        cost = (1.0f + g*g - temp*temp) / (2.0f*g);
-//    }
-//    
-//    // Sample psi.
-//    psi = 2.0f * PI * random_01(rand_state);
-//    cosp = cos(psi);
-//    sinp = 0.0;
-//    if (psi < PI) {
-//        sinp = sqrtf(1.0f - cosp*cosp);
-//    }
-//    else {
-//        sinp = -sqrtf(1.0f - cosp*cosp);
-//    }
-//    
-//    float uxx, uyy, uzz;
-//    
-//    
-//    float ONE_MINUS_COSZERO = 1.0E-12;
-//    // New trajectory.
-//    if ((1 - fabs(p->uz)) <= ONE_MINUS_COSZERO) {   /* Close to perpendicular. */
-//        uxx = sint * cosp;
-//        uyy = sint * sinp;
-//        uzz = cost * (p->uz >= 0 ? 1:-1);
-//        
-//        p->ux = uxx;
-//        p->uy = uyy;
-//        p->uz = uzz;
-//    }
-//    else {
-//        temp = sqrtf(1.0f - p->uz*p->uz);
-//        uxx = sint * (p->ux * p->uz * cosp - p->uy * sinp) / temp + p->ux * cost;
-//        uyy = sint * (p->uy * p->uz * cosp + p->ux * sinp) / temp + p->uy * cost;
-//        uzz = (-1) * sint * cosp * temp + p->uz * cost;
-//        
-//        p->ux = uxx;
-//        p->uy = uyy;
-//        p->uz = uzz;
-//        
-//        //normalisation seems to be required as we are using floats! Otherwise the small numerical error will accumulate
-//        //temp=native_rsqrt(p->ux * p->ux + p->uy * p->uy + p->uz * p->uz);
-//        //p->ux = p->ux*temp;
-//        //p->uy = p->uy*temp;
-//        //p->uz = p->uz*temp;
-//    }
-//    
-//    
-//    
-//    // Update trajectory.
-//    //p->ux = uxx;
-//    //p->uy = uyy;
-//    //p->uz = uzz;
-//    
-//    
-//    
-//    /*
-//     
-//     //This is more efficient for g!=0 but of course less efficient for g==0
-//     // FIXME:  Should we use native floating point division here to speed things up,
-//     //         or will this sacrifice too much accuracy?
-//     //temp = ((1.0f-(g)*(g)) / (1.0f-(g)+2.0f*(g)*random_01(rand_state)));//Should be close close????!!!!!
-//     //cost = ((1.0f+(g)*(g) - temp*temp) / (2.0f*(g)));
-//     //temp = __fdividef((1.0f-(g)*(g)),(1.0f-(g)+2.0f*(g)*random_01(rand_state)));//Should be close close????!!!!!
-//     //cost = __fdividef((1.0f+(g)*(g) - temp*temp),(2.0f*(g)));
-//     
-//     
-//     sint = sqrtf(1.0f - cost*cost);
-//     
-//     
-//     
-//     sinp = sincos(2.0f*PI*random_01(rand_state), &cosp);// spin psi [0-2*PI)
-//     
-//     temp = sqrtf(1.0f - p->uz*p->uz);
-//     
-//     if(temp==0.0f) //normal incident.
-//     {
-//     p->ux = sint*cosp;
-//     p->uy = sint*sinp;
-//     p->uz = copysign(cost,p->uz*cost);
-//     }
-//     else // regular incident.
-//     {
-//     // FIXME:  Should we use native floating point division here to speed things up,
-//     //         or will this sacrifice too much accuracy?
-//     p->ux = (sint*(p->ux*p->uz*cosp - p->uy*sinp) / temp) + p->ux*cost;
-//     p->uy = (sint*(p->uy*p->uz*cosp + tempdir*sinp) / temp) + p->uy*cost;
-//     //p->ux = __fdividef(sint*(p->ux*p->uz*cosp - p->uy*sinp),temp) + p->ux*cost;
-//     //p->uy = __fdividef(sint*(p->uy*p->uz*cosp + tempdir*sinp),temp) + p->uy*cost;
-//     p->uz = -sint*cosp*temp + p->uz*cost;
-//     }
-//     
-//     //normalisation seems to be required as we are using floats! Otherwise the small numerical error will accumulate
-//     temp=rsqrtf((p->ux * p->ux) + (p->uy * p->uy) + (p->uz*p->uz));
-//     p->ux = p->ux*temp;
-//     p->uy = p->uy*temp;
-//     p->uz = p->uz*temp;
-//     */
-//    
-//}
-
-
-////==============================================================
-//// Probabilistically determine if the photon should cease 
-//// or continue to propagate through the medium (Roulette).
-////--------------------------------------------------------
-//#define CHANCE 0.1f     // Chance of surviving roulette.
-//#define THRESHOLD 0.01f // Threshold for determining of we should perform roulette.
-//void PerformRoulette(Photon *p, random_state *rand_state)
-//{
-//    if (p->weight < THRESHOLD) {
-//        if (random_01(rand_state) <= CHANCE) {
-//            p->weight /= CHANCE;
-//        }
-//        else {
-//            p->status = DEAD;
-//        }
-//    }
-//}
 
 
 
@@ -325,19 +147,27 @@ void InitTissue(Tissue *t)
 
 //#pragma OPENCL EXTENSION cl_khr_global_int32_base_atomics : enable;
 
+// NOT SUPPORTED ON CURRENT GPU!!!
+//#pragma OPENCL EXTENSION cl_amd_fp64 : enable;
+
 //==============================================================
 // Main execution kernel.
 //-----------------------
 __kernel void LaunchPhoton(__global float *initial_state_vals,
 		__global float *global_results,
-		int NUMPHOTONS)
+		const int NUMPHOTONS,
+		const int DETECTOR_SIZE)
 {
-	__local float results[101];
 
+	// Get indices and size of the work-items.
+	int index = get_global_id(0);
+	int global_work_size = get_global_size(0);
+
+
+	// Zero out the results array since we will be accumulating values.
 	int k;
-	for (k = 0; k < 101; k++) {
+	for (k = 0; k < DETECTOR_SIZE * global_work_size; k++) {
 		global_results[k] = 0;
-		results[k] = 0;
 	}
 
 
@@ -345,9 +175,7 @@ __kernel void LaunchPhoton(__global float *initial_state_vals,
 	const float THRESHOLD = 0.01f; // Threshold for determining of we should perform roulette.
 
 
-	// get the index of the test we are performing
-	int index = get_global_id(0);
-	int g_work_size = get_global_size(0);
+	
 
 
 	// Each work-item (i.e. thread) needs it's own RNG.  z1 - z4 are used
@@ -370,7 +198,7 @@ __kernel void LaunchPhoton(__global float *initial_state_vals,
 
 
 	// Test the RNG briefly.
-	//testRng(NUMPHOTONS, &z1, &z2, &z3, &z4, results);
+	//testRng(NUMPHOTONS, &z1, &z2, &z3, &z4, global_results);
 
 
 
@@ -483,7 +311,8 @@ __kernel void LaunchPhoton(__global float *initial_state_vals,
 				r = fabs(p.z);
 				ir  = (r/dr);
 				if (ir >= NR) ir = NR;
-				results[ir] += absorbed;
+				global_results[ir + (DETECTOR_SIZE * index)] += absorbed;
+				//global_results[ir] += absorbed;
 				barrier(CLK_LOCAL_MEM_FENCE);
 
 
@@ -610,10 +439,6 @@ __kernel void LaunchPhoton(__global float *initial_state_vals,
 
 
 	} // end NUMPHOTONS loop
-
-	for (k = 0; k < 101; k++)
-		global_results[k] += results[k];
-
 
 
 };
