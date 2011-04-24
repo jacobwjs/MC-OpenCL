@@ -322,7 +322,8 @@ __kernel void LaunchPhoton(__global float *initial_state_vals,
 				r = fabs(p.z);
 				ir  = (r/dr);
 				if (ir >= NR) ir = NR;
-				global_results[ir + (DETECTOR_SIZE * index)] += absorbed;
+				global_results[ir + (DETECTOR_SIZE * index)] = rand(&z1, &z2, &z3, &z4);
+				//global_results[ir + (DETECTOR_SIZE * index)] += absorbed;
 				//global_results[ir] += absorbed;
 				//barrier(CLK_LOCAL_MEM_FENCE);
 
