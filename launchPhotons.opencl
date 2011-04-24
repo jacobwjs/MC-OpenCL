@@ -156,13 +156,15 @@ void InitTissue(Tissue *t)
 __kernel void LaunchPhoton(__global float *initial_state_vals,
 		__global float *global_results,
 		const int NUMPHOTONS,
-		const int DETECTOR_SIZE)
+		const int DETECTOR_SIZE,
+		__global float *scatt_coeffs)
 {
 
 	// Get indices and size of the work-items.
 	int index = get_global_id(0);
 	int global_work_size = get_global_size(0);
 
+	
 
 	// Zero out the results array since we will be accumulating values.
 	int k;
@@ -170,6 +172,7 @@ __kernel void LaunchPhoton(__global float *initial_state_vals,
 		global_results[k] = 0;
 	}
 
+	
 
 	const float CHANCE = 0.1f;     // Chance of surviving roulette.
 	const float THRESHOLD = 0.01f; // Threshold for determining of we should perform roulette.
@@ -230,8 +233,15 @@ __kernel void LaunchPhoton(__global float *initial_state_vals,
 	//---------------------------------------------------------
 	// Create the tissue and initialize it.
 	Tissue t;
-	InitTissue(&t);
+	//InitTissue(&t);
 
+	// FIXME:  Add some variation to mu_s.  This should go away when done with debugging.
+	//t.mu_s = (index/2)*t.mu_s + 10.0f;
+	t.mu_s = scatt_coeffs[index];
+	t.mu_a = 1.0f;
+	t.g    = 0.9f;
+	t.albedo = t.mu_s / (t.mu_s + t.mu_a);
+	
 
 
 	//---------------------------------------------------------
@@ -252,7 +262,7 @@ __kernel void LaunchPhoton(__global float *initial_state_vals,
 
 
 	int j = 0;
-	const float ONE_MINUS_COSZERO = 1.0E-10;
+	const float ONE_MINUS_COSZERO = 1.0E-1;
 	float temp, rnd;
 
 
@@ -284,6 +294,7 @@ __kernel void LaunchPhoton(__global float *initial_state_vals,
 		p.ux = sint*native_cos((float)psi);
 		p.uy = sint*native_sin((float)psi);
 		p.uz = cost;
+		p.step_size = 0.0f;
 
 		//while (p.status == ALIVE) {
 		for (j = 0; j < NUMSTEPS; j++) {     // Iterations for each photon (i.e. while(ALIVE))
@@ -300,7 +311,7 @@ __kernel void LaunchPhoton(__global float *initial_state_vals,
 
 
 			// Only perform these steps when scattering has occurred (i.e. step_size > 0)
-			//if (p.step_size > 0.0f) {
+			if (p.step_size > 0.0f) {
 				//============================  DROP  ===================================
 				absorbed = p.weight * (1 - t.albedo);
 				temp_absorbed = temp_weight * (1 - t.albedo);
@@ -313,7 +324,7 @@ __kernel void LaunchPhoton(__global float *initial_state_vals,
 				if (ir >= NR) ir = NR;
 				global_results[ir + (DETECTOR_SIZE * index)] += absorbed;
 				//global_results[ir] += absorbed;
-				barrier(CLK_LOCAL_MEM_FENCE);
+				//barrier(CLK_LOCAL_MEM_FENCE);
 
 
 
@@ -390,7 +401,7 @@ __kernel void LaunchPhoton(__global float *initial_state_vals,
 
 
 				}
-				barrier(CLK_LOCAL_MEM_FENCE);
+				//barrier(CLK_LOCAL_MEM_FENCE);
 
 
 
@@ -411,8 +422,8 @@ __kernel void LaunchPhoton(__global float *initial_state_vals,
 
 
 
-				barrier(CLK_LOCAL_MEM_FENCE);
-			//}
+				//barrier(CLK_LOCAL_MEM_FENCE);
+			}
 
 
 
@@ -430,12 +441,12 @@ __kernel void LaunchPhoton(__global float *initial_state_vals,
 				}
 			}
 
-			barrier(CLK_LOCAL_MEM_FENCE);
+			//barrier(CLK_LOCAL_MEM_FENCE);
 
 		} // end NUMSTEPS loop
 
 
-		barrier(CLK_LOCAL_MEM_FENCE);
+		//barrier(CLK_LOCAL_MEM_FENCE);
 
 
 	} // end NUMPHOTONS loop

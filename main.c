@@ -26,10 +26,10 @@
 
 
 #define DATA_SIZE (101)
-#define MAX_THREADS (4)
-#define LOCAL_SIZE (1)			// The local size of a work group.
+#define MAX_THREADS (128)
+#define LOCAL_SIZE (128)			// The local size of a work group.
 #define NUM_EVENTS (1)			// Number of times the kernel is executed.
-#define PHOTONS_PER_ITEM (1)	// Number of photons to simulate per-work-item.
+#define PHOTONS_PER_ITEM (4000)	// Number of photons to simulate per-work-item.
 
 double radial_size = 3.0;
 int NR = 100;
@@ -56,8 +56,12 @@ int main(int argc, char** argv)
 
 	cl_mem 			input;              // device memory used for the input array
 	cl_mem 			output;             // device memory used for the output array
+	cl_mem			scatt_coeffs;		// holds various scattering coefficients for simulation.
 
-	cl_event event[NUM_EVENTS];
+	cl_event event[NUM_EVENTS];			// Events executed on the device.
+
+	float tissue_scatt_coeffs[MAX_THREADS];
+
 
 	//Get an OpenCL platform
 	cl_platform_id 	cpPlatform;
@@ -77,7 +81,8 @@ int main(int argc, char** argv)
 	// produces it's own independent stream of random numbers, and since the RNG being
 	// used needs 4 seeds, we generate 4 * workitems random seeds using the RNG library
 	// from the C-library.
-	srand(time(0));
+	//srand(time(0));
+	srand(11);
 	unsigned int rng_seeds[4*MAX_THREADS];
 	int i;
 	for(i = 0; i < 4*MAX_THREADS; i++)
@@ -87,6 +92,14 @@ int main(int argc, char** argv)
 	// Initialize results to zero.
 	for (i = 0; i < DATA_SIZE; i++)
 		results[i] = 0;
+
+	// Initialize the scattering coefficients of the tissue.
+	for (i = 0; i < MAX_THREADS; i++) {
+		//tissue_scatt_coeffs[i] = rand() % 100;
+		tissue_scatt_coeffs[i] = 100.0f + 0;//(i*0.01f);
+		printf("scatter coeffs = %f\n", tissue_scatt_coeffs[i]);
+	}
+	tissue_scatt_coeffs[0] = 100.0f;
 
 
 	char cBuffer[1024];
@@ -153,6 +166,7 @@ int main(int argc, char** argv)
 	//
 	input  = clCreateBuffer(context,  CL_MEM_READ_ONLY,  sizeof(unsigned int) * (MAX_THREADS*4), NULL, NULL);
 	output = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float) * DATA_SIZE * MAX_THREADS, NULL, NULL);
+	scatt_coeffs  = clCreateBuffer(context,  CL_MEM_READ_ONLY,  sizeof(float) * MAX_THREADS, NULL, NULL);
 	if (!input || !output)
 	{
 		printf("Error: Failed to allocate device memory!\n");
@@ -162,6 +176,7 @@ int main(int argc, char** argv)
 	// Write our data set into the input array in device memory
 	//
 	err = clEnqueueWriteBuffer(commands, input, CL_TRUE, 0, sizeof(unsigned int) * (MAX_THREADS*4), rng_seeds, 0, NULL, NULL);
+	err |= clEnqueueWriteBuffer(commands, scatt_coeffs, CL_TRUE, 0, sizeof(float) * MAX_THREADS, tissue_scatt_coeffs, 0, NULL, NULL);
 	if (err != CL_SUCCESS)
 	{
 		printf("Error: Failed to write to source array!\n");
@@ -180,6 +195,7 @@ int main(int argc, char** argv)
 	err |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &output);
 	err |= clSetKernelArg(kernel, 2, sizeof(const int), &num_photons_per_work_item);
 	err |= clSetKernelArg(kernel, 3, sizeof(const int), &detector_size);
+	err |= clSetKernelArg(kernel, 4, sizeof(cl_mem), &scatt_coeffs);
 	if (err != CL_SUCCESS)
 	{
 		printf("Error: Failed to set kernel arguments! %d\n", err);
@@ -296,13 +312,17 @@ char * load_program_source(const char *filename)
 
 void printAllResults(float *results)
 {
+	FILE *target; 	// File pointer to save data to.
+	target = fopen("debug.txt", "w");
+
 	int i, j;
-	for (i = 0; i < DATA_SIZE/2; i++) {
+	for (i = 0; i < DATA_SIZE; i++) {
 		for (j = 0; j < MAX_THREADS; j++) {
-			printf("[%d, %d] = %5.3f \t ", j, i, results[(j*DATA_SIZE) + i]);
+			fprintf(target, "[%d, %d] = %5.3f \t ", j, i, results[(j*DATA_SIZE) + i]);
 		}
-		printf("\n");
+		fprintf(target,"\n");
 	}
+	fclose(target);
 }
 
 
@@ -319,7 +339,7 @@ void printFluence(float *results, const int numPhotons)
 	double dr = radial_size / NR;	// cm
 	double r;
 	double Fpla;
-	double Nphotons = numPhotons;///(32);
+	double Nphotons = (numPhotons);///(32);
 	double mu_a = 1.0;
 
 	for (ir = 0; ir <= NR; ir++)
